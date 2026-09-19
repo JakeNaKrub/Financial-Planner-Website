@@ -96,7 +96,7 @@ function parseExpense(
   const cleanedRaw = raw.replace(/[*_]/g, "").trim();
   if (parseDateHeading(cleanedRaw)) return null;
   const amountMatches = cleanedRaw.match(
-    /(?:฿|\$)?\s*\d+(?:[.,]\d{1,2})?(?=\s*(?:บาท|baht|euro|eur)\b|\s|$|[,+])/giu,
+    /(?<!\/)(?:฿|\$)?\s*\d+(?:[.,]\d{1,2})?(?=\s*(?:บาท|baht|euro|eur)\b|\s|$|[,+])/giu,
   );
   if (!amountMatches?.length) return null;
   const amountCents = amountMatches.reduce(
@@ -115,8 +115,8 @@ function parseExpense(
         : 1;
   const excluded = /-\s*me|เราไม่ต้องจ่าย|เราไม่ได้กิน|เราเอง/i.test(cleanedRaw);
   const body = raw
-    .replace(/(?:฿|\$)?\s*\d+(?:[.,]\d{1,2})?(?=\s*(?:บาท|baht|euro|eur)\b|\s|$|[,+])/giu, "")
-    .replace(/\/\d+/, "")
+    .replace(/(?<!\/)(?:฿|\$)?\s*\d+(?:[.,]\d{1,2})?(?=\s*(?:บาท|baht|euro|eur)\b|\s|$|[,+])/giu, "")
+    .replace(/\s*\/\s*\d+/g, "")
     .replace(/-\s*me/i, "")
     .replace(/เราไม่ต้องจ่าย|เราไม่ได้กิน|เราเอง/gu, "")
     .replace(/[📍✅*_]/gu, "")
