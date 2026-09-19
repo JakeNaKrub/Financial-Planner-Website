@@ -1,11 +1,18 @@
 {
   "name": "Milemark · Travel expenses",
   "short_name": "Milemark",
-  "description": "Frictionless travel expense capture.",
+  "description": "Plan, split, and share travel expenses.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#fbfaf7",
   "theme_color": "#fbfaf7",
   "orientation": "portrait",
-  "icons": []
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
 }

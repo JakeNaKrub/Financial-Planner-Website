@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { CalendarDays } from "lucide-react";
 
 export type SharedExpense = {
   id: string;
@@ -38,6 +39,15 @@ function money(minor: number, currency: string) {
   })}`;
 }
 
+function formatDate(value: string | null) {
+  if (!value) return null;
+  return new Date(`${value}T12:00:00`).toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 export default function SharedTripView({ payload }: { payload: SharedPayload }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
@@ -58,7 +68,9 @@ export default function SharedTripView({ payload }: { payload: SharedPayload }) 
     return summary;
   }, {});
   const total = expenses.reduce((sum, expense) => sum + Number(expense.amount_minor), 0);
-  const dates = [payload.trip.start_date, payload.trip.end_date].filter(Boolean).join(" – ");
+  const startDate = formatDate(payload.trip.start_date);
+  const endDate = formatDate(payload.trip.end_date);
+  const dates = [startDate, endDate].filter(Boolean).join(" – ");
 
   return (
     <main className="share-shell">
@@ -72,6 +84,14 @@ export default function SharedTripView({ payload }: { payload: SharedPayload }) 
           </div>
           <div className="share-lock">READ ONLY</div>
         </header>
+
+        <section className="share-period" aria-label="Trip period">
+          <CalendarDays size={20} strokeWidth={1.8} />
+          <div>
+            <span>Trip period</span>
+            <strong>{dates || "Dates not set"}</strong>
+          </div>
+        </section>
 
         <section className="share-total">
           <span>Total recorded</span>
@@ -115,7 +135,7 @@ export default function SharedTripView({ payload }: { payload: SharedPayload }) 
               <article className="share-expense-row" key={expense.id}>
                 <div>
                   <strong>{expense.title}</strong>
-                  <span>{categoryFor(expense.title)} · {new Date(expense.spent_at).toLocaleDateString()}</span>
+                  <span>{categoryFor(expense.title)} · {new Date(expense.spent_at).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}</span>
                 </div>
                 <b>{money(Number(expense.amount_minor), expense.currency)}</b>
               </article>
