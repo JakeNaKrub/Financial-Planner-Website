@@ -1,0 +1,11 @@
+{
+  "name": "Milemark · Travel expenses",
+  "short_name": "Milemark",
+  "description": "Frictionless travel expense capture.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fbfaf7",
+  "theme_color": "#fbfaf7",
+  "orientation": "portrait",
+  "icons": []
+}
