@@ -77,7 +77,10 @@ export default function SharedTripView({ payload }: { payload: SharedPayload }) 
       <div className="share-content">
         <header className="share-header">
           <div>
-            <p className="eyebrow">MILEMARK · READ ONLY</p>
+            <div className="share-brand">
+              <img className="brand-logo" src="/icon.svg" alt="Milemark" />
+              <p className="eyebrow">MILEMARK · READ ONLY</p>
+            </div>
             <h1>{payload.trip.name}</h1>
             <p className="muted">{payload.trip.route || dates || "Shared trip"}</p>
             {payload.trip.description && <p className="share-description">{payload.trip.description}</p>}
@@ -85,13 +88,15 @@ export default function SharedTripView({ payload }: { payload: SharedPayload }) 
           <div className="share-lock">READ ONLY</div>
         </header>
 
-        <section className="share-period" aria-label="Trip period">
-          <CalendarDays size={20} strokeWidth={1.8} />
-          <div>
-            <span>Trip period</span>
-            <strong>{dates || "Dates not set"}</strong>
-          </div>
-        </section>
+        {dates && (
+          <section className="share-period" aria-label="Trip period">
+            <CalendarDays size={20} strokeWidth={1.8} />
+            <div>
+              <span>Trip period</span>
+              <strong>{dates}</strong>
+            </div>
+          </section>
+        )}
 
         <section className="share-total">
           <span>Total recorded</span>

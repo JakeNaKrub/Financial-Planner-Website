@@ -46,6 +46,17 @@ button {
   justify-content: space-between;
   margin-bottom: 34px;
 }
+.app-brand,
+.share-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.brand-logo {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
 .eyebrow {
   margin: 0 0 7px;
   color: var(--muted);
@@ -112,16 +123,16 @@ h2 {
   font-size: 24px;
 }
 .auth-mark {
-  display: grid;
-  place-items: center;
   width: 42px;
   height: 42px;
   border-radius: 13px;
-  color: white;
-  background: var(--green);
-  font:
-    700 19px Georgia,
-    serif;
+}
+.auth-logo {
+  display: block;
+  width: 54px;
+  height: 54px;
+  margin-bottom: 12px;
+  border-radius: 15px;
 }
 .auth-copy {
   margin: 18px 0 23px;

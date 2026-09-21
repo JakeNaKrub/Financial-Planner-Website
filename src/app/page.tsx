@@ -528,11 +528,14 @@ export default function Home() {
     <main className="app-shell">
       <div className="app-content">
         <header className="topbar">
-          <div>
+          <div className="app-brand">
+            <img className="brand-logo" src="/icon.svg" alt="Milemark" />
+            <div>
             <p className="eyebrow">
               {dataSource === "supabase" ? "SYNCED TRIP" : "YOUR TRIP"}
             </p>
             <h1>{activeTab === "Today" ? "Travel expenses" : activeTab}</h1>
+            </div>
           </div>
           <button
             className="avatar"
@@ -755,6 +758,7 @@ function AuthLoading() {
   return (
     <main className="auth-shell">
       <div className="auth-card">
+        <img className="auth-logo" src="/icon.svg" alt="Milemark" />
         <p className="eyebrow">MILEMARK</p>
         <h1>Travel expenses</h1>
         <p className="auth-copy">กำลังตรวจสอบบัญชีของคุณ...</p>
@@ -790,7 +794,7 @@ function AuthScreen() {
     <main className="auth-shell">
       <div className="auth-card">
         <div className="auth-brand">
-          <div className="auth-mark">M</div>
+          <img className="auth-mark" src="/icon.svg" alt="Milemark" />
           <div>
             <p className="eyebrow">MILEMARK</p>
             <h1>Travel expenses</h1>
