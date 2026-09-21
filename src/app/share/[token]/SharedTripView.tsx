@@ -78,8 +78,8 @@ export default function SharedTripView({ payload }: { payload: SharedPayload }) 
         <header className="share-header">
           <div>
             <div className="share-brand">
-              <img className="brand-logo" src="/icon.svg" alt="Milemark" />
-              <p className="eyebrow">MILEMARK · READ ONLY</p>
+              <img className="brand-logo" src="/icon.svg" alt="FinTrack" />
+              <p className="eyebrow">FINTRACK · READ ONLY</p>
             </div>
             <h1>{payload.trip.name}</h1>
             <p className="muted">{payload.trip.route || dates || "Shared trip"}</p>
@@ -99,7 +99,10 @@ export default function SharedTripView({ payload }: { payload: SharedPayload }) 
         )}
 
         <section className="share-total">
-          <span>Total recorded</span>
+          <div className="share-total-heading">
+            <span>Total recorded</span>
+            <span className="share-total-label">Shared trip ledger</span>
+          </div>
           <strong>{money(total, payload.trip.base_currency)}</strong>
           <small>{expenses.length} expenses</small>
         </section>
@@ -112,7 +115,10 @@ export default function SharedTripView({ payload }: { payload: SharedPayload }) 
           <div className="share-category-list">
             {Object.entries(categoriesTotal).map(([expenseCategory, amount]) => (
               <div className="share-category-row" key={expenseCategory}>
-                <span>{expenseCategory}</span>
+                <div className="share-category-label">
+                  <span>{expenseCategory}</span>
+                  <i><b style={{ width: `${total ? (amount / total) * 100 : 0}%` }} /></i>
+                </div>
                 <strong>{money(amount, payload.trip.base_currency)}</strong>
               </div>
             ))}

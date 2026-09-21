@@ -48,15 +48,6 @@ const currencySymbols: Record<AppCurrency, string> = {
 const money = (cents: number, currency: AppCurrency = "THB") =>
   `${currencySymbols[currency]}${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-const initials = (name: string) =>
-  name
-    .trim()
-    .split(/\s+/)
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase() || "ME";
-
 const monthNumbers: Record<string, number> = {
   jan: 0,
   feb: 1,
@@ -529,7 +520,7 @@ export default function Home() {
       <div className="app-content">
         <header className="topbar">
           <div className="app-brand">
-            <img className="brand-logo" src="/icon.svg" alt="Milemark" />
+            <img className="brand-logo" src="/icon.svg" alt="FinTrack" />
             <div>
             <p className="eyebrow">
               {dataSource === "supabase" ? "SYNCED TRIP" : "YOUR TRIP"}
@@ -758,8 +749,8 @@ function AuthLoading() {
   return (
     <main className="auth-shell">
       <div className="auth-card">
-        <img className="auth-logo" src="/icon.svg" alt="Milemark" />
-        <p className="eyebrow">MILEMARK</p>
+        <img className="auth-logo" src="/icon.svg" alt="FinTrack" />
+        <p className="eyebrow">FINTRACK</p>
         <h1>Travel expenses</h1>
         <p className="auth-copy">กำลังตรวจสอบบัญชีของคุณ...</p>
       </div>
@@ -794,9 +785,9 @@ function AuthScreen() {
     <main className="auth-shell">
       <div className="auth-card">
         <div className="auth-brand">
-          <img className="auth-mark" src="/icon.svg" alt="Milemark" />
+          <img className="auth-mark" src="/icon.svg" alt="FinTrack" />
           <div>
-            <p className="eyebrow">MILEMARK</p>
+            <p className="eyebrow">FINTRACK</p>
             <h1>Travel expenses</h1>
           </div>
         </div>
@@ -1508,9 +1499,11 @@ function MoreView({
   return (
     <>
       <section className="more-intro">
-        <div className="avatar large">{initials(profileName)}</div>
+        <div className="wallet-logo">
+          <img src="/icon.svg" alt="FinTrack" />
+        </div>
         <div>
-          <p className="eyebrow">YOUR WALLET</p>
+          <p className="eyebrow">FINTRACK WALLET</p>
           <h2>{profileName}</h2>
           <p className="muted">{currency} · Asia/Bangkok</p>
         </div>

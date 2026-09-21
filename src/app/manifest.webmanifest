@@ -1,6 +1,6 @@
 {
-  "name": "Milemark · Travel expenses",
-  "short_name": "Milemark",
+  "name": "FinTrack · Travel expenses",
+  "short_name": "FinTrack",
   "description": "Plan, split, and share travel expenses.",
   "start_url": "/",
   "display": "standalone",
