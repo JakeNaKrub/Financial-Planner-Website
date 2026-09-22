@@ -251,6 +251,15 @@ h2 {
 .capture-section {
   margin-bottom: 25px;
 }
+.offline-banner {
+  margin: -20px 0 20px;
+  padding: 9px 11px;
+  border: 1px solid #ead9ab;
+  border-radius: 9px;
+  color: #806d3c;
+  background: #fff8e5;
+  font: 11px Arial, sans-serif;
+}
 .capture-heading {
   display: flex;
   align-items: center;
@@ -513,6 +522,11 @@ h2 {
   align-items: center;
   gap: 11px;
   padding: 12px 0;
+  cursor: pointer;
+}
+.expense-row:hover,
+.expense-row:focus-within {
+  background: rgb(255 255 255 / 55%);
 }
 .expense-copy {
   flex: 1;
@@ -699,6 +713,91 @@ h2 {
   font-size: 17px;
   font-weight: 500;
 }
+.budget-panel,
+.spending-chart {
+  margin-top: 28px;
+}
+.budget-track {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: #ece9e1;
+}
+.budget-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--green);
+}
+.budget-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  color: var(--muted);
+  font: 11px Arial, sans-serif;
+}
+.budget-meta strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+.budget-alert-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  border: 0;
+  padding: 0;
+  color: var(--green);
+  background: transparent;
+  font: 700 11px Arial, sans-serif;
+}
+.budget-notice {
+  margin-top: 9px;
+  color: var(--muted);
+  font: 11px/1.4 Arial, sans-serif;
+}
+.chart-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  min-height: 150px;
+  padding: 12px 0 0;
+  border-bottom: 1px solid var(--line);
+}
+.chart-bar {
+  display: grid;
+  flex: 1;
+  gap: 6px;
+  min-width: 0;
+  text-align: center;
+}
+.chart-bar-track {
+  display: flex;
+  align-items: flex-end;
+  height: 92px;
+  border-radius: 6px 6px 2px 2px;
+  background: #f0eee8;
+}
+.chart-bar-track i {
+  display: block;
+  width: 100%;
+  min-height: 5px;
+  border-radius: 6px 6px 2px 2px;
+  background: var(--green);
+}
+.chart-bar strong,
+.chart-bar span {
+  overflow: hidden;
+  color: var(--muted);
+  font: 9px Arial, sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chart-bar strong {
+  color: var(--ink);
+  font-weight: 600;
+}
 .category-list {
   display: grid;
   gap: 15px;
@@ -872,7 +971,8 @@ h2 {
     700 11px Arial,
     sans-serif;
 }
-.editor-card input {
+.editor-card input,
+.editor-card textarea {
   width: 100%;
   padding: 12px;
   border: 1px solid var(--line);
@@ -880,6 +980,10 @@ h2 {
   outline: 0;
   background: var(--white);
   font-size: 14px;
+}
+.editor-card textarea {
+  min-height: 72px;
+  resize: vertical;
 }
 .editor-checkbox {
   display: flex !important;
@@ -1171,6 +1275,21 @@ h2 {
 }
 .bottom-nav button.active span {
   font-weight: 700;
+}
+@media print {
+  .bottom-nav,
+  .topbar button,
+  .capture-section,
+  .row-actions,
+  .settings-list,
+  .share-message,
+  .share-link {
+    display: none !important;
+  }
+  .app-shell {
+    max-width: none;
+    box-shadow: none;
+  }
 }
 @media (min-width: 600px) {
   .app-shell {

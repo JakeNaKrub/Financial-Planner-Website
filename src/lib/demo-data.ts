@@ -24,6 +24,7 @@ export type Trip = {
   name: string;
   route: string;
   dates: string;
+  budgetCents?: number;
   description?: string;
   shareToken?: string;
 };

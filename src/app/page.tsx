@@ -12,6 +12,7 @@ import {
   History,
   MapPin,
   MoreHorizontal,
+  Printer,
   Plus,
   Receipt,
   Share2,
@@ -166,17 +167,37 @@ export default function Home() {
     return savedCurrency && savedCurrency in currencySymbols ? savedCurrency : "THB";
   });
   const [activeTab, setActiveTab] = useState("Today");
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(() =>
+    typeof window === "undefined" ? "" : localStorage.getItem("fintrack-expense-draft") || "",
+  );
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [trips, setTrips] = useState<Trip[]>([]);
   const [activeTripId, setActiveTripId] = useState<string | number>("");
   const [dataSource, setDataSource] = useState<"demo" | "supabase">("demo");
+  const [isOnline, setIsOnline] = useState(() =>
+    typeof navigator === "undefined" ? true : navigator.onLine,
+  );
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [editExpenseTitle, setEditExpenseTitle] = useState("");
+  const [editExpenseNote, setEditExpenseNote] = useState("");
   const [editExpenseAmount, setEditExpenseAmount] = useState("");
   const [editExpensePeople, setEditExpensePeople] = useState("1");
   const [editExpenseExcluded, setEditExpenseExcluded] = useState(false);
     const [editExpenseCategory, setEditExpenseCategory] = useState("Other");
+    useEffect(() => {
+      const updateOnlineState = () => setIsOnline(navigator.onLine);
+      window.addEventListener("online", updateOnlineState);
+      window.addEventListener("offline", updateOnlineState);
+      return () => {
+        window.removeEventListener("online", updateOnlineState);
+        window.removeEventListener("offline", updateOnlineState);
+      };
+    }, []);
+
+    useEffect(() => {
+      if (input) localStorage.setItem("fintrack-expense-draft", input);
+      else localStorage.removeItem("fintrack-expense-draft");
+    }, [input]);
   function updateProfileName(name: string) {
     const nextName = name.trim() || "Arun K.";
     setProfileName(nextName);
@@ -235,12 +256,12 @@ export default function Home() {
       ] = await Promise.all([
         supabase
           .from("trips")
-          .select("id, name, description, share_token, route, start_date, end_date")
+          .select("id, name, description, share_token, route, start_date, end_date, budget_minor")
           .order("created_at", { ascending: false }),
         supabase
           .from("expenses")
           .select(
-            "id, trip_id, title, raw_input, amount_minor, base_amount_minor, category_id, categories(name), split_status, spent_at, expense_participants(share_minor, user_id, is_excluded)",
+            "id, trip_id, title, note, raw_input, amount_minor, base_amount_minor, category_id, categories(name), split_status, spent_at, expense_participants(share_minor, user_id, is_excluded)",
           )
           .order("spent_at", { ascending: false }),
       ]);
@@ -255,6 +276,7 @@ export default function Home() {
         dates:
           [trip.start_date, trip.end_date].filter(Boolean).join(" – ") ||
           "New trip",
+        budgetCents: Number(trip.budget_minor || 0),
       }));
       const remoteExpenseRows: Expense[] = remoteExpenses.map((expense) => {
         const participant = expense.expense_participants?.find(
@@ -284,6 +306,7 @@ export default function Home() {
           id: expense.id,
           tripId: expense.trip_id,
           title,
+          note: expense.note || undefined,
           amountCents,
           myCostCents,
           owedCents: Math.max(0, amountCents - myCostCents),
@@ -333,6 +356,7 @@ export default function Home() {
           trip_id: activeTripId,
           category_id: categoryRow.id,
           title: expense.title,
+          note: expense.note || null,
           raw_input: rawInput,
           amount_minor: expense.amountCents,
           base_amount_minor: expense.amountCents,
@@ -400,6 +424,7 @@ export default function Home() {
   async function updateExpense(expense: Expense) {
     setEditingExpense(expense);
     setEditExpenseTitle(expense.title);
+    setEditExpenseNote(expense.note || "");
     setEditExpenseAmount(String(expense.amountCents / 100));
     setEditExpensePeople(String(expense.people ?? 1));
     setEditExpenseExcluded(Boolean(expense.isExcluded));
@@ -444,6 +469,7 @@ export default function Home() {
         .update({
           category_id: categoryRow.id,
           title: editExpenseTitle.trim(),
+          note: editExpenseNote.trim() || null,
           amount_minor: amountCents,
           base_amount_minor: amountCents,
           raw_input: `${editExpenseTitle.trim()} ${amountCents / 100}${people > 1 ? ` /${people}` : ""}${editExpenseExcluded ? " -me" : ""}`,
@@ -474,10 +500,7 @@ export default function Home() {
               owedCents,
               people: people > 1 ? people : undefined,
               isExcluded: editExpenseExcluded,
-              note:
-                people > 1
-                  ? `${people} people shared${editExpenseExcluded ? " · you excluded" : ""}`
-                  : undefined,
+              note: editExpenseNote.trim() || undefined,
             }
           : item,
       ),
@@ -536,6 +559,7 @@ export default function Home() {
             {userEmail.slice(0, 2).toUpperCase()}
           </button>
         </header>
+        {!isOnline && <div className="offline-banner">Offline mode · your capture draft is saved on this device.</div>}
         {activeTab === "Today" && (
           <>
             <section className="capture-section">
@@ -713,6 +737,7 @@ export default function Home() {
               </button>
             </div>
             <label>Expense name<input value={editExpenseTitle} onChange={(event) => setEditExpenseTitle(event.target.value)} required /></label>
+            <label>Note<textarea value={editExpenseNote} onChange={(event) => setEditExpenseNote(event.target.value)} placeholder="Add a note about this expense" rows={3} /></label>
             <label>Amount in THB<input type="number" min="0" step="0.01" value={editExpenseAmount} onChange={(event) => setEditExpenseAmount(event.target.value)} required /></label>
             <label>Divided by<input type="number" min="1" step="1" value={editExpensePeople} onChange={(event) => setEditExpensePeople(event.target.value)} required /></label>
                         <label>Category<select value={editExpenseCategory} onChange={(event) => setEditExpenseCategory(event.target.value)}>
@@ -862,7 +887,7 @@ function ExpenseRow({
   currency: AppCurrency;
 }) {
   return (
-    <article className="expense-row">
+    <article className="expense-row" onClick={() => onEdit(expense)}>
       <div className="expense-icon">
         <ExpenseIcon type={expense.icon} />
       </div>
@@ -889,13 +914,19 @@ function ExpenseRow({
       </div>
       <div className="row-actions">
         <button
-          onClick={() => onEdit(expense)}
+          onClick={(event) => {
+            event.stopPropagation();
+            onEdit(expense);
+          }}
           aria-label={`Edit ${expense.title}`}
         >
           Edit
         </button>
         <button
-          onClick={() => onDelete(expense)}
+          onClick={(event) => {
+            event.stopPropagation();
+            onDelete(expense);
+          }}
           aria-label={`Delete ${expense.title}`}
         >
           Delete
@@ -922,8 +953,10 @@ function TripView({
 }) {
   const [showNewTrip, setShowNewTrip] = useState(false);
   const [editingTrip, setEditingTrip] = useState(false);
+  const [notificationMessage, setNotificationMessage] = useState("");
   const [newTripName, setNewTripName] = useState("");
   const [newTripDescription, setNewTripDescription] = useState("");
+  const [tripBudget, setTripBudget] = useState("");
   const activeTrip = trips.find(
     (trip) => String(trip.id) === String(activeTripId),
   ) ||
@@ -964,6 +997,38 @@ function TripView({
         : 0,
       color: categoryColors[index % categoryColors.length],
     }));
+  const dailyTotals = Object.entries(
+    visibleExpenses.reduce<Record<string, number>>((summary, expense) => {
+      const key = expense.date || "Unknown";
+      summary[key] = (summary[key] || 0) + expense.myCostCents;
+      return summary;
+    }, {}),
+  )
+    .sort(([, first], [, second]) => second - first)
+    .slice(0, 7)
+    .reverse();
+  const dailyPeak = Math.max(...dailyTotals.map(([, value]) => value), 1);
+  const budgetRatio = activeTrip.budgetCents ? tripTotals.personal / activeTrip.budgetCents : 0;
+  async function enableBudgetAlerts() {
+    if (!("Notification" in window)) {
+      setNotificationMessage("Browser notifications are not supported here.");
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      setNotificationMessage("Notifications remain off until you allow them in your browser.");
+      return;
+    }
+    if (budgetRatio >= 1) {
+      new Notification("FinTrack budget alert", { body: `${activeTrip.name} is over budget.` });
+      setNotificationMessage("Budget alert sent.");
+    } else if (budgetRatio >= 0.8) {
+      new Notification("FinTrack budget alert", { body: `${activeTrip.name} is ${Math.round(budgetRatio * 100)}% used.` });
+      setNotificationMessage("Budget alert sent.");
+    } else {
+      setNotificationMessage("Budget alerts enabled. You are below the 80% threshold.");
+    }
+  }
   async function createTrip() {
     const name = newTripName.trim();
     if (!name) return;
@@ -971,8 +1036,8 @@ function TripView({
     if (!authData.user) return;
     const { data: inserted, error } = await supabase
       .from("trips")
-      .insert({ owner_id: authData.user.id, name, description: newTripDescription.trim() || null, route: name })
-      .select("id, name, description, share_token, route, start_date, end_date")
+      .insert({ owner_id: authData.user.id, name, description: newTripDescription.trim() || null, route: name, budget_minor: Math.round(Number(tripBudget || 0) * 100) })
+      .select("id, name, description, share_token, route, start_date, end_date, budget_minor")
       .single();
     if (error || !inserted) return;
     const trip = {
@@ -984,17 +1049,20 @@ function TripView({
       dates:
         [inserted.start_date, inserted.end_date].filter(Boolean).join(" – ") ||
         "New trip",
+      budgetCents: Number(inserted.budget_minor || 0),
     };
     setTrips([...trips, trip]);
     setActiveTripId(trip.id);
     setNewTripName("");
     setNewTripDescription("");
+    setTripBudget("");
     setShowNewTrip(false);
   }
   function editTrip() {
     if (!activeTrip.id) return;
     setNewTripName(activeTrip.name);
     setNewTripDescription(activeTrip.description || "");
+    setTripBudget(activeTrip.budgetCents ? String(activeTrip.budgetCents / 100) : "");
     setEditingTrip(true);
     setShowNewTrip(false);
   }
@@ -1004,20 +1072,21 @@ function TripView({
     if (typeof activeTrip.id === "string") {
       const { error } = await supabase
         .from("trips")
-        .update({ name, description: newTripDescription.trim() || null, route: name })
+        .update({ name, description: newTripDescription.trim() || null, route: name, budget_minor: Math.round(Number(tripBudget || 0) * 100) })
         .eq("id", activeTrip.id);
       if (error) return;
     }
     setTrips(
       trips.map((trip) =>
         trip.id === activeTrip.id
-          ? { ...trip, name, description: newTripDescription.trim() || undefined, route: name }
+          ? { ...trip, name, description: newTripDescription.trim() || undefined, route: name, budgetCents: Math.round(Number(tripBudget || 0) * 100) }
           : trip,
       ),
     );
     setEditingTrip(false);
     setNewTripName("");
     setNewTripDescription("");
+    setTripBudget("");
   }
   async function deleteTrip() {
     if (!activeTrip.id) return;
@@ -1051,6 +1120,7 @@ function TripView({
             placeholder="Short description (optional)"
             rows={2}
           />
+          <input type="number" min="0" step="0.01" value={tripBudget} onChange={(event) => setTripBudget(event.target.value)} placeholder="Budget (optional)" />
           <button onClick={() => void createTrip()}>Create trip</button>
         </div>
       </section>
@@ -1101,6 +1171,7 @@ function TripView({
             placeholder="Short description (optional)"
             rows={2}
           />
+          <input type="number" min="0" step="0.01" value={tripBudget} onChange={(event) => setTripBudget(event.target.value)} placeholder="Budget (optional)" />
           <button onClick={createTrip}>Create</button>
         </div>
       )}
@@ -1108,6 +1179,7 @@ function TripView({
         <div className="new-trip-form">
           <input value={newTripName} onChange={(event) => setNewTripName(event.target.value)} autoFocus />
           <textarea value={newTripDescription} onChange={(event) => setNewTripDescription(event.target.value)} placeholder="Short description (optional)" rows={2} />
+          <input type="number" min="0" step="0.01" value={tripBudget} onChange={(event) => setTripBudget(event.target.value)} placeholder="Budget (optional)" />
           <button onClick={() => void saveTripEdit()}>Save</button>
           <button className="trip-action-button" onClick={() => setEditingTrip(false)}>Cancel</button>
         </div>
@@ -1131,6 +1203,19 @@ function TripView({
           to you
         </p>
       </section>
+      <section className="budget-panel">
+        <div className="section-heading">
+          <h2>Trip budget</h2>
+          <span>{activeTrip.budgetCents ? `${Math.round((tripTotals.personal / activeTrip.budgetCents) * 100)}% used` : "Not set"}</span>
+        </div>
+        <div className="budget-track"><i style={{ width: `${activeTrip.budgetCents ? Math.min(100, (tripTotals.personal / activeTrip.budgetCents) * 100) : 0}%` }} /></div>
+        <div className="budget-meta">
+          <span>{money(tripTotals.personal, currency)} spent</span>
+          <strong>{activeTrip.budgetCents ? `${money(Math.max(0, activeTrip.budgetCents - tripTotals.personal), currency)} left` : "Set a budget in Edit"}</strong>
+        </div>
+        {(activeTrip.budgetCents ?? 0) > 0 && <button className="budget-alert-button" onClick={() => void enableBudgetAlerts()}><Sparkles size={14} /> Enable budget alerts</button>}
+        {notificationMessage && <p className="budget-notice">{notificationMessage}</p>}
+      </section>
       <div className="metric-grid">
         <div>
           <span>Gross paid</span>
@@ -1151,6 +1236,23 @@ function TripView({
           <strong>{visibleExpenses.length}</strong>
         </div>
       </div>
+      <section className="spending-chart">
+        <div className="section-heading">
+          <h2>Spending rhythm</h2>
+          <span>Personal cost</span>
+        </div>
+        {dailyTotals.length ? (
+          <div className="chart-bars" aria-label="Spending by day">
+            {dailyTotals.map(([label, value]) => (
+              <div className="chart-bar" key={label}>
+                <div className="chart-bar-track"><i style={{ height: `${(value / dailyPeak) * 100}%` }} /></div>
+                <strong>{money(value, currency)}</strong>
+                <span>{label}</span>
+              </div>
+            ))}
+          </div>
+        ) : <p className="empty-state">Add expenses to see your spending rhythm.</p>}
+      </section>
       <div className="section-heading">
         <h2>By category</h2>
         <span>Actual cost</span>
@@ -1496,6 +1598,35 @@ function MoreView({
     URL.revokeObjectURL(url);
   }
 
+  function exportCsv() {
+    const trip = trips.find((item) => String(item.id) === String(activeTripId)) || trips[0];
+    const escapeCsv = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
+    const rows = [
+      ["Trip", "Date", "Expense", "Category", "Note", "Paid", "Your cost", "Owed back"],
+      ...expenses.map((expense) => [
+        trip?.name || "Trip",
+        expense.date,
+        expense.title,
+        expense.category,
+        expense.note || "",
+        money(expense.amountCents, currency),
+        money(expense.myCostCents, currency),
+        money(expense.owedCents, currency),
+      ]),
+    ];
+    const blob = new Blob([rows.map((row) => row.map(escapeCsv).join(",")).join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${trip?.name || "trip"}-expenses.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function printTrip() {
+    window.print();
+  }
+
   return (
     <>
       <section className="more-intro">
@@ -1532,6 +1663,16 @@ function MoreView({
         <button type="button" onClick={exportTripData}>
           <WalletCards size={19} />
           <span>Export trip data</span>
+          <ChevronRight size={17} />
+        </button>
+        <button type="button" onClick={exportCsv}>
+          <Receipt size={19} />
+          <span>Export CSV</span>
+          <ChevronRight size={17} />
+        </button>
+        <button type="button" onClick={printTrip}>
+          <Printer size={19} />
+          <span>Print / save PDF</span>
           <ChevronRight size={17} />
         </button>
       </div>

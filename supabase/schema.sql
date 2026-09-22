@@ -17,6 +17,7 @@ create table public.trips (
   start_date date,
   end_date date,
   base_currency text not null default 'THB',
+  budget_minor bigint not null default 0 check (budget_minor >= 0),
   created_at timestamptz not null default now()
 );
 
@@ -40,6 +41,7 @@ create table public.expenses (
   trip_id uuid not null references public.trips(id) on delete cascade,
   category_id uuid references public.categories(id) on delete set null,
   title text not null,
+  note text,
   raw_input text not null,
   amount_minor bigint not null check (amount_minor >= 0),
   currency text not null default 'THB',
