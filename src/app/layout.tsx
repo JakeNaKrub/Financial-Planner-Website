@@ -6,6 +6,11 @@ export const metadata: Metadata = {
   title: "FinTrack",
   description: "Plan, split, and share travel expenses.",
   manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "FinTrack",
+    statusBarStyle: "default",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
