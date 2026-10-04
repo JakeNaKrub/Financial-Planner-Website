@@ -75,12 +75,24 @@ create table public.settlements (
   created_at timestamptz not null default now()
 );
 
+create table public.incomes (
+  id uuid primary key default gen_random_uuid(),
+  trip_id uuid not null references public.trips(id) on delete cascade,
+  received_by uuid not null references auth.users(id) on delete cascade,
+  source text not null,
+  amount_minor bigint not null check (amount_minor > 0),
+  currency text not null default 'THB',
+  received_at timestamptz not null default now(),
+  created_at timestamptz not null default now()
+);
+
 alter table public.trips enable row level security;
 alter table public.people enable row level security;
 alter table public.categories enable row level security;
 alter table public.expenses enable row level security;
 alter table public.expense_participants enable row level security;
 alter table public.settlements enable row level security;
+alter table public.incomes enable row level security;
 
 create policy "Users manage their trips" on public.trips for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 create policy "Users manage their people" on public.people for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
@@ -88,6 +100,7 @@ create policy "Users manage their categories" on public.categories for all using
 create policy "Users manage trip expenses" on public.expenses for all using (exists (select 1 from public.trips where trips.id = expenses.trip_id and trips.owner_id = auth.uid())) with check (exists (select 1 from public.trips where trips.id = expenses.trip_id and trips.owner_id = auth.uid()));
 create policy "Users manage expense participants" on public.expense_participants for all using (exists (select 1 from public.expenses join public.trips on trips.id = expenses.trip_id where expenses.id = expense_participants.expense_id and trips.owner_id = auth.uid())) with check (exists (select 1 from public.expenses join public.trips on trips.id = expenses.trip_id where expenses.id = expense_participants.expense_id and trips.owner_id = auth.uid()));
 create policy "Users manage settlements" on public.settlements for all using (exists (select 1 from public.trips where trips.id = settlements.trip_id and trips.owner_id = auth.uid())) with check (exists (select 1 from public.trips where trips.id = settlements.trip_id and trips.owner_id = auth.uid()));
+create policy "Users manage trip income" on public.incomes for all using (received_by = auth.uid() and exists (select 1 from public.trips where trips.id = incomes.trip_id and trips.owner_id = auth.uid())) with check (received_by = auth.uid() and exists (select 1 from public.trips where trips.id = incomes.trip_id and trips.owner_id = auth.uid()));
 
 alter table public.trips add column if not exists share_token text;
 create unique index if not exists trips_share_token_idx on public.trips (share_token) where share_token is not null;
@@ -106,6 +119,22 @@ as $$
         select jsonb_agg(to_jsonb(expense) - 'paid_by' order by expense.spent_at desc)
         from public.expenses as expense
         where expense.trip_id = trip.id
+      ),
+      '[]'::jsonb
+    ),
+    'incomes', coalesce(
+      (
+        select jsonb_agg(
+          jsonb_build_object(
+            'source', income.source,
+            'amount_minor', income.amount_minor,
+            'currency', income.currency,
+            'received_at', income.received_at
+          )
+          order by income.received_at desc
+        )
+        from public.incomes as income
+        where income.trip_id = trip.id
       ),
       '[]'::jsonb
     )

@@ -19,6 +19,14 @@ export type Expense = {
   splitStatus: ExpenseStatus;
 };
 
+export type Income = {
+  id: string | number;
+  tripId: string | number;
+  source: string;
+  amountCents: number;
+  receivedAt: string;
+};
+
 export type Trip = {
   id: string | number;
   name: string;
@@ -28,4 +36,3 @@ export type Trip = {
   description?: string;
   shareToken?: string;
 };
-

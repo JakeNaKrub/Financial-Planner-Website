@@ -340,6 +340,10 @@ h2 {
   border-radius: 14px;
   background: #f5fbf6;
 }
+.income-preview {
+  border-color: #d7e8dc;
+  background: #f2faf4;
+}
 .preview-main,
 .preview-details {
   display: flex;
@@ -657,6 +661,33 @@ h2 {
 .trip-hero h2 span {
   color: var(--coral);
 }
+.trip-financial-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: -12px 0 22px;
+}
+.trip-financial-summary div {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--white);
+}
+.trip-financial-summary span {
+  display: block;
+  color: var(--muted);
+  font: 11px Arial, sans-serif;
+}
+.trip-financial-summary strong {
+  display: block;
+  margin-top: 7px;
+  overflow: hidden;
+  font-size: 19px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .muted {
   color: var(--muted);
   font:
@@ -714,8 +745,45 @@ h2 {
   font-weight: 500;
 }
 .budget-panel,
-.spending-chart {
+.spending-chart,
+.income-section {
   margin-top: 28px;
+}
+.income-list {
+  display: grid;
+  border-top: 1px solid var(--line);
+}
+.income-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+}
+.income-icon {
+  color: var(--green);
+  background: var(--green-soft);
+}
+.income-amount {
+  color: var(--green);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.income-row .row-actions {
+  flex-direction: row;
+}
+.income-row .row-actions button {
+  display: grid;
+  place-items: center;
+  min-width: 30px;
+  min-height: 30px;
+}
+.income-note {
+  margin-top: 10px;
+  color: var(--muted);
+  font: 11px/1.5 Arial, sans-serif;
 }
 .budget-track {
   height: 9px;
@@ -1189,6 +1257,23 @@ h2 {
   color: var(--ink);
   background: #f3f7f1;
 }
+.import-feedback {
+  padding: 10px 11px;
+  border-radius: 8px;
+  font: 12px/1.45 Arial, sans-serif;
+}
+.import-feedback.progress {
+  color: #806d3c;
+  background: #fff8e5;
+}
+.import-feedback.success {
+  color: var(--green);
+  background: var(--green-soft);
+}
+.import-feedback.error {
+  color: #a34d40;
+  background: #fff0ec;
+}
 .import-format code {
   padding: 2px 4px;
   border-radius: 4px;
@@ -1373,7 +1458,7 @@ h2 {
 }
 .share-total {
   display: grid;
-  gap: 5px;
+  gap: 16px;
   padding: 25px;
   border-radius: 18px;
   color: white;
@@ -1396,9 +1481,33 @@ h2 {
   color: #c9c7c0;
   font-size: 12px;
 }
-.share-total strong {
+.share-total-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.share-total-values > div {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+}
+.share-total-values > div + div {
+  padding-left: 16px;
+  border-left: 1px solid rgb(255 255 255 / 18%);
+}
+.share-total-values span {
+  color: #c9c7c0;
+  font-size: 11px;
+}
+.share-total-values strong {
+  overflow-wrap: anywhere;
   font-size: clamp(28px, 8vw, 42px);
   line-height: 1;
+}
+.share-total-values small {
+  color: #c9c7c0;
+  font-size: 11px;
 }
 .share-section {
   margin-top: 30px;
@@ -1415,12 +1524,14 @@ h2 {
   font: 11px Arial, sans-serif;
 }
 .share-category-list,
-.share-expense-list {
+.share-expense-list,
+.share-income-list {
   overflow: hidden;
   border-top: 1px solid var(--line);
 }
 .share-category-row,
-.share-expense-row {
+.share-expense-row,
+.share-income-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1466,6 +1577,31 @@ h2 {
 .share-expense-row b {
   flex: none;
   font-size: 14px;
+}
+.share-income-row > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.share-income-row strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+.share-income-row span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.share-income-row b {
+  flex: none;
+  color: var(--green);
+  font-size: 14px;
+}
+.share-income-note {
+  margin-top: 10px;
+  color: var(--muted);
+  font: 11px/1.5 Arial, sans-serif;
 }
 .share-controls {
   display: grid;

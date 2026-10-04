@@ -1,14 +1,3 @@
-alter table public.trips
-  add column if not exists share_token text;
-
-update public.trips
-set share_token = encode(gen_random_bytes(18), 'hex')
-where share_token is null;
-
-create unique index if not exists trips_share_token_idx
-  on public.trips (share_token)
-  where share_token is not null;
-
 create table if not exists public.incomes (
   id uuid primary key default gen_random_uuid(),
   trip_id uuid not null references public.trips(id) on delete cascade,

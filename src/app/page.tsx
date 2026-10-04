@@ -12,11 +12,13 @@ import {
   History,
   MapPin,
   MoreHorizontal,
+  Pencil,
   Printer,
   Plus,
   Receipt,
   Share2,
   Sparkles,
+  Trash2,
   TrainFront,
   WalletCards,
   X,
@@ -24,6 +26,7 @@ import {
 import {
   type Expense,
   type ExpenseStatus,
+  type Income,
   type Trip,
 } from "@/lib/demo-data";
 import {
@@ -87,6 +90,7 @@ function parseExpense(
 ): Expense | null {
   const cleanedRaw = raw.replace(/[*_]/g, "").trim();
   if (parseDateHeading(cleanedRaw)) return null;
+  if (/^income(?:\s|$)/i.test(cleanedRaw)) return null;
   const amountMatches = cleanedRaw.match(
     /(?<!\/)(?:฿|\$)?\s*\d+(?:[.,]\d{1,2})?(?=\s*(?:บาท|baht|euro|eur)\b|\s|$|[,+])/giu,
   );
@@ -139,6 +143,33 @@ function parseExpense(
   };
 }
 
+function parseIncome(
+  raw: string,
+  tripId: string | number,
+  receivedAt = new Date().toISOString(),
+): Income | null {
+  const cleanedRaw = raw.replace(/[*_]/g, "").trim();
+  const match = cleanedRaw.match(
+    /^income\s+(฿\s*)?((?:\d{1,3}(?:,\d{3})+|\d+)(?:[.,]\d{1,2})?)(?:\s+(?:baht|บาท))?(?:\s+(.+))?$/iu,
+  );
+  if (!match) return null;
+  const amountRaw = match[2];
+  const normalizedAmount = amountRaw.includes(".")
+    ? amountRaw.replace(/,/g, "")
+    : amountRaw.includes(",") && !/,\d{1,2}$/.test(amountRaw)
+      ? amountRaw.replace(/,/g, "")
+      : amountRaw.replace(",", ".");
+  const amountCents = Math.round(Number(normalizedAmount) * 100);
+  if (!Number.isFinite(amountCents) || amountCents <= 0) return null;
+  return {
+    id: Date.now() + Math.random(),
+    tripId,
+    source: match[3]?.trim() || "Income",
+    amountCents,
+    receivedAt,
+  };
+}
+
 function ExpenseIcon({ type }: { type: Expense["icon"] }) {
   const Icon =
     type === "train"
@@ -171,6 +202,12 @@ export default function Home() {
     typeof window === "undefined" ? "" : localStorage.getItem("fintrack-expense-draft") || "",
   );
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [incomes, setIncomes] = useState<Income[]>([]);
+  const [incomeError, setIncomeError] = useState("");
+  const [editingIncome, setEditingIncome] = useState<Income | null>(null);
+  const [editIncomeSource, setEditIncomeSource] = useState("");
+  const [editIncomeAmount, setEditIncomeAmount] = useState("");
+  const [entryError, setEntryError] = useState("");
   const [trips, setTrips] = useState<Trip[]>([]);
   const [activeTripId, setActiveTripId] = useState<string | number>("");
   const [dataSource, setDataSource] = useState<"demo" | "supabase">("demo");
@@ -208,8 +245,16 @@ export default function Home() {
     localStorage.setItem("milemark-currency", nextCurrency);
   }
   const preview = useMemo(
-    () => parseExpense(input, activeTripId),
+    () => (/^income(?:\s|$)/i.test(input.trim()) ? null : parseExpense(input, activeTripId)),
     [input, activeTripId],
+  );
+  const incomePreview = useMemo(
+    () => parseIncome(input, activeTripId),
+    [input, activeTripId],
+  );
+  const isIncomeInput = /^income(?:\s|$)/i.test(input.trim());
+  const currentTripIncomes = incomes.filter(
+    (income) => String(income.tripId) === String(activeTripId),
   );
   const currentTripExpenses = expenses.filter(
     (expense) => expense.tripId === activeTripId,
@@ -253,6 +298,7 @@ export default function Home() {
       const [
         { data: remoteTrips, error: tripsError },
         { data: remoteExpenses, error: expensesError },
+        { data: remoteIncomes, error: incomesError },
       ] = await Promise.all([
         supabase
           .from("trips")
@@ -264,9 +310,20 @@ export default function Home() {
             "id, trip_id, title, note, raw_input, amount_minor, base_amount_minor, category_id, categories(name), split_status, spent_at, expense_participants(share_minor, user_id, is_excluded)",
           )
           .order("spent_at", { ascending: false }),
+        supabase
+          .from("incomes")
+          .select("id, trip_id, source, amount_minor, received_at")
+          .order("received_at", { ascending: false }),
       ]);
       if (tripsError || expensesError || !remoteTrips || !remoteExpenses)
         return;
+      if (incomesError) {
+        setIncomeError(
+          "Trip income could not be loaded. Apply supabase/income-migration.sql to enable income tracking.",
+        );
+      } else {
+        setIncomeError("");
+      }
       const remoteTripRows: Trip[] = remoteTrips.map((trip) => ({
         id: trip.id,
         name: trip.name,
@@ -331,6 +388,15 @@ export default function Home() {
       });
       setTrips(remoteTripRows);
       setExpenses(remoteExpenseRows);
+      setIncomes(
+        (remoteIncomes || []).map((income) => ({
+          id: income.id,
+          tripId: income.trip_id,
+          source: income.source,
+          amountCents: Number(income.amount_minor),
+          receivedAt: income.received_at,
+        })),
+      );
       setActiveTripId(remoteTripRows[0]?.id ?? "");
       if (!remoteTripRows.length) setActiveTab("Trip");
       setDataSource("supabase");
@@ -384,15 +450,56 @@ export default function Home() {
     return true;
   }
 
+  async function addParsedIncome(income: Income) {
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError || !authData.user || typeof income.tripId !== "string") {
+      setEntryError("Sign in and select a saved trip before adding income.");
+      return false;
+    }
+    const { data: inserted, error } = await supabase
+      .from("incomes")
+      .insert({
+        trip_id: income.tripId,
+        received_by: authData.user.id,
+        source: income.source,
+        amount_minor: income.amountCents,
+        received_at: income.receivedAt,
+      })
+      .select("id")
+      .single();
+    if (error || !inserted) {
+      setEntryError(
+        "Could not save income. Check the connection and apply supabase/income-migration.sql if income storage is not installed.",
+      );
+      return false;
+    }
+    setIncomes((current) => [{ ...income, id: inserted.id }, ...current]);
+    setEntryError("");
+    return true;
+  }
+
   async function addExpense() {
     if (!preview || !activeTripId) return;
     if (await addParsedExpense(preview, input)) setInput("");
   }
 
+  async function addQuickEntry() {
+    if (isIncomeInput) {
+      if (!incomePreview) {
+        setEntryError("Use income followed by a positive amount, for example: income 4000 gift from Mom.");
+        return;
+      }
+      if (await addParsedIncome(incomePreview)) setInput("");
+      return;
+    }
+    await addExpense();
+  }
+
   async function addImportedExpenses(notes: string) {
-    if (!activeTripId) return { imported: 0, skipped: 0 };
+    if (!activeTripId) return { imported: 0, incomeImported: 0, skipped: 0 };
     let importDate = { label: "Today", iso: new Date().toISOString() };
     let imported = 0;
+    let incomeImported = 0;
     let skipped = 0;
     const lines = notes
       .split(/\r?\n/)
@@ -402,6 +509,16 @@ export default function Home() {
       const dateHeading = parseDateHeading(line);
       if (dateHeading) {
         importDate = dateHeading;
+        continue;
+      }
+      if (/^income(?:\s|$)/i.test(line)) {
+        const income = parseIncome(line, activeTripId, importDate.iso);
+        if (!income) {
+          skipped += 1;
+          continue;
+        }
+        if (await addParsedIncome(income)) incomeImported += 1;
+        else skipped += 1;
         continue;
       }
       const expense = parseExpense(
@@ -417,8 +534,54 @@ export default function Home() {
       if (await addParsedExpense(expense, line)) imported += 1;
       else skipped += 1;
     }
-    setActiveTab(imported && lines.some((line) => parseDateHeading(line)) ? "Trip" : "Today");
-    return { imported, skipped };
+    return { imported, incomeImported, skipped };
+  }
+
+  function editIncome(income: Income) {
+    setEditingIncome(income);
+    setEditIncomeSource(income.source);
+    setEditIncomeAmount(String(income.amountCents / 100));
+    setEntryError("");
+  }
+
+  async function saveIncomeEdit() {
+    if (!editingIncome || !editIncomeSource.trim()) return;
+    const amountCents = Math.round(Number(editIncomeAmount) * 100);
+    if (!Number.isFinite(amountCents) || amountCents <= 0) {
+      setEntryError("Enter an income amount greater than zero.");
+      return;
+    }
+    if (typeof editingIncome.id === "string") {
+      const { error } = await supabase
+        .from("incomes")
+        .update({ source: editIncomeSource.trim(), amount_minor: amountCents })
+        .eq("id", editingIncome.id);
+      if (error) {
+        setEntryError("Could not update this income entry. Please try again.");
+        return;
+      }
+    }
+    setIncomes((current) =>
+      current.map((income) =>
+        income.id === editingIncome.id
+          ? { ...income, source: editIncomeSource.trim(), amountCents }
+          : income,
+      ),
+    );
+    setEditingIncome(null);
+    setEntryError("");
+  }
+
+  async function deleteIncome(income: Income) {
+    if (typeof income.id === "string") {
+      const { error } = await supabase.from("incomes").delete().eq("id", income.id);
+      if (error) {
+        setIncomeError("Could not delete this income entry. Please try again.");
+        return;
+      }
+    }
+    setIncomes((current) => current.filter((item) => item.id !== income.id));
+    setIncomeError("");
   }
 
   async function updateExpense(expense: Expense) {
@@ -571,9 +734,12 @@ export default function Home() {
                 <Plus size={23} />
                 <input
                   value={input}
-                  onChange={(event) => setInput(event.target.value)}
-                  onKeyDown={(event) => event.key === "Enter" && addExpense()}
-                  placeholder="What did you spend?"
+                  onChange={(event) => {
+                    setInput(event.target.value);
+                    setEntryError("");
+                  }}
+                  onKeyDown={(event) => event.key === "Enter" && void addQuickEntry()}
+                  placeholder="Expense or income received?"
                   autoComplete="off"
                 />
                 {input && (
@@ -595,7 +761,12 @@ export default function Home() {
                 <button onClick={() => setInput("83 coke /5 -me")}>
                   83 coke /5 -me
                 </button>
+                {" "}or{" "}
+                <button onClick={() => setInput("income 4000 gift from Mom")}>
+                  income 4000 gift from Mom
+                </button>
               </p>
+              {entryError && <p className="auth-error">{entryError}</p>}
               {preview && (
                 <div className="preview-card">
                   <div className="preview-main">
@@ -626,11 +797,34 @@ export default function Home() {
                         "No split"
                       )}
                     </span>
-                    <button onClick={addExpense}>
+                    <button onClick={() => void addExpense()}>
                       <Check size={15} /> Add expense
                     </button>
                   </div>
                 </div>
+              )}
+              {isIncomeInput && incomePreview && (
+                <div className="preview-card income-preview">
+                  <div className="preview-main">
+                    <div className="expense-icon"><CircleDollarSign size={18} /></div>
+                    <div>
+                      <strong>{incomePreview.source}</strong>
+                      <span>Income received · not part of expense splits</span>
+                    </div>
+                    <b>{money(incomePreview.amountCents, currency)}</b>
+                  </div>
+                  <div className="preview-details">
+                    <span>Trip income</span>
+                    <button onClick={() => void addQuickEntry()}>
+                      <Check size={15} /> Add income
+                    </button>
+                  </div>
+                </div>
+              )}
+              {isIncomeInput && !incomePreview && input.trim() && (
+                <p className="auth-error">
+                  Use income followed by a positive amount, for example: income 4000 gift from Mom.
+                </p>
               )}
             </section>
             <section className="today-summary">
@@ -686,16 +880,23 @@ export default function Home() {
             activeTripId={activeTripId}
             setActiveTripId={setActiveTripId}
             expenses={expenses}
+            incomes={incomes}
             trips={trips}
             setTrips={setTrips}
             currency={currency}
+            incomeError={incomeError}
+            onEditIncome={editIncome}
+            onDeleteIncome={(income) => void deleteIncome(income)}
           />
         )}
         {activeTab === "History" && (
           <HistoryView
             expenses={currentTripExpenses}
+            incomes={currentTripIncomes}
             onEdit={updateExpense}
             onDelete={deleteExpense}
+            onEditIncome={editIncome}
+            onDeleteIncome={(income) => void deleteIncome(income)}
             currency={currency}
           />
         )}
@@ -710,6 +911,7 @@ export default function Home() {
         {activeTab === "More" && (
           <MoreView
             expenses={currentTripExpenses}
+            incomes={currentTripIncomes}
             trips={trips}
             activeTripId={activeTripId}
             setTrips={setTrips}
@@ -744,6 +946,28 @@ export default function Home() {
                           {expenseCategoryNames.map((category) => <option key={category} value={category}>{category}</option>)}
                         </select></label>
             <label className="editor-checkbox"><input type="checkbox" checked={!editExpenseExcluded} onChange={(event) => setEditExpenseExcluded(!event.target.checked)} /> I am included in the split</label>
+            <button className="auth-submit" type="submit">Save changes</button>
+          </form>
+        </div>
+      )}
+      {editingIncome && (
+        <div className="editor-backdrop" role="presentation">
+          <form
+            className="editor-card"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void saveIncomeEdit();
+            }}
+          >
+            <div className="editor-heading">
+              <h2>Edit income</h2>
+              <button type="button" onClick={() => setEditingIncome(null)} aria-label="Close editor">
+                <X size={18} />
+              </button>
+            </div>
+            <label>Source<input value={editIncomeSource} onChange={(event) => setEditIncomeSource(event.target.value)} required /></label>
+            <label>Amount in THB<input type="number" min="0.01" step="0.01" value={editIncomeAmount} onChange={(event) => setEditIncomeAmount(event.target.value)} required /></label>
+            {entryError && <p className="auth-error">{entryError}</p>}
             <button className="auth-submit" type="submit">Save changes</button>
           </form>
         </div>
@@ -936,20 +1160,59 @@ function ExpenseRow({
   );
 }
 
+function IncomeRow({
+  income,
+  currency,
+  onEdit,
+  onDelete,
+}: {
+  income: Income;
+  currency: AppCurrency;
+  onEdit: (income: Income) => void;
+  onDelete: (income: Income) => void;
+}) {
+  return (
+    <article className="income-row">
+      <div className="expense-icon income-icon"><CircleDollarSign size={18} /></div>
+      <div className="expense-copy">
+        <strong>{income.source}</strong>
+        <span>Income received · {new Date(income.receivedAt).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}</span>
+      </div>
+      <strong className="income-amount">+{money(income.amountCents, currency)}</strong>
+      <div className="row-actions">
+        <button onClick={() => onEdit(income)} aria-label={`Edit income from ${income.source}`}>
+          <Pencil size={14} />
+        </button>
+        <button onClick={() => onDelete(income)} aria-label={`Delete income from ${income.source}`}>
+          <Trash2 size={14} />
+        </button>
+      </div>
+    </article>
+  );
+}
+
 function TripView({
   activeTripId,
   setActiveTripId,
   expenses,
+  incomes,
   trips,
   setTrips,
   currency,
+  incomeError,
+  onEditIncome,
+  onDeleteIncome,
 }: {
   activeTripId: string | number;
   setActiveTripId: (id: string | number) => void;
   expenses: Expense[];
+  incomes: Income[];
   trips: Trip[];
   setTrips: (trips: Trip[]) => void;
   currency: AppCurrency;
+  incomeError: string;
+  onEditIncome: (income: Income) => void;
+  onDeleteIncome: (income: Income) => void;
 }) {
   const [showNewTrip, setShowNewTrip] = useState(false);
   const [editingTrip, setEditingTrip] = useState(false);
@@ -963,6 +1226,13 @@ function TripView({
     trips[0] || { id: "", name: "", route: "", dates: "" };
   const visibleExpenses = expenses.filter(
     (expense) => String(expense.tripId) === String(activeTrip.id),
+  );
+  const visibleIncomes = incomes.filter(
+    (income) => String(income.tripId) === String(activeTrip.id),
+  );
+  const totalIncome = visibleIncomes.reduce(
+    (sum, income) => sum + income.amountCents,
+    0,
   );
   const tripTotals = visibleExpenses.reduce(
     (summary, expense) => ({
@@ -1195,6 +1465,16 @@ function TripView({
           <MapPin size={20} />
         </div>
       </div>
+      <section className="trip-financial-summary" aria-label="Trip totals">
+        <div>
+          <span>Total income</span>
+          <strong className="green">{money(totalIncome, currency)}</strong>
+        </div>
+        <div>
+          <span>Total expenses</span>
+          <strong>{money(tripTotals.gross, currency)}</strong>
+        </div>
+      </section>
       <section className="big-stat">
         <span>Actual personal cost</span>
         <strong>{money(tripTotals.personal, currency)}</strong>
@@ -1236,6 +1516,29 @@ function TripView({
           <strong>{visibleExpenses.length}</strong>
         </div>
       </div>
+      <section className="income-section">
+        <div className="section-heading">
+          <h2>Income received</h2>
+          <span>{visibleIncomes.length} entries</span>
+        </div>
+        {incomeError && <p className="auth-error">{incomeError}</p>}
+        {visibleIncomes.length ? (
+          <div className="income-list">
+            {visibleIncomes.map((income) => (
+              <IncomeRow
+                key={income.id}
+                income={income}
+                currency={currency}
+                onEdit={onEditIncome}
+                onDelete={onDeleteIncome}
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="empty-state">Use quick capture with “income 4000 gift from Mom” to add trip income.</p>
+        )}
+        <p className="income-note">Income is tracked separately and does not change shared expense splits.</p>
+      </section>
       <section className="spending-chart">
         <div className="section-heading">
           <h2>Spending rhythm</h2>
@@ -1434,13 +1737,19 @@ function OwedView({
 
 function HistoryView({
   expenses,
+  incomes,
   onEdit,
   onDelete,
+  onEditIncome,
+  onDeleteIncome,
   currency,
 }: {
   expenses: Expense[];
+  incomes: Income[];
   onEdit: (expense: Expense) => void;
   onDelete: (expense: Expense) => void;
+  onEditIncome: (income: Income) => void;
+  onDeleteIncome: (income: Income) => void;
   currency: AppCurrency;
 }) {
   const [query, setQuery] = useState("");
@@ -1458,42 +1767,81 @@ function HistoryView({
         new Date(second.spentAt || 0).getTime() - new Date(first.spentAt || 0).getTime();
       return sortOrder === "newest" ? difference : -difference;
     });
+  const filteredIncomes = incomes
+    .filter(
+      (income) =>
+        category === "All" &&
+        (!query.trim() ||
+          income.source.toLowerCase().includes(query.trim().toLowerCase())),
+    )
+    .sort((first, second) => {
+      if (sortOrder === "amount") return second.amountCents - first.amountCents;
+      const difference =
+        new Date(second.receivedAt).getTime() -
+        new Date(first.receivedAt).getTime();
+      return sortOrder === "newest" ? difference : -difference;
+    });
   const total = filteredExpenses.reduce((sum, expense) => sum + expense.amountCents, 0);
+  const incomeTotal = filteredIncomes.reduce(
+    (sum, income) => sum + income.amountCents,
+    0,
+  );
   const personal = filteredExpenses.reduce((sum, expense) => sum + expense.myCostCents, 0);
-  const filteredGrouped = filteredExpenses.reduce<Record<string, Expense[]>>((groups, expense) => {
-    const date = expense.date || "Undated";
-    (groups[date] ||= []).push(expense);
+  type HistoryEntry =
+    | { kind: "expense"; value: Expense; timestamp: number; date: string }
+    | { kind: "income"; value: Income; timestamp: number; date: string };
+  const entries: HistoryEntry[] = [
+    ...filteredExpenses.map((expense) => ({
+      kind: "expense" as const,
+      value: expense,
+      timestamp: new Date(expense.spentAt || 0).getTime(),
+      date: expense.date || "Undated",
+    })),
+    ...filteredIncomes.map((income) => {
+      const receivedAt = new Date(income.receivedAt);
+      return {
+        kind: "income" as const,
+        value: income,
+        timestamp: receivedAt.getTime(),
+        date:
+          receivedAt.toDateString() === new Date().toDateString()
+            ? "Today"
+            : receivedAt.toLocaleDateString([], { month: "short", day: "numeric" }),
+      };
+    }),
+  ];
+  const compareEntries = (first: HistoryEntry, second: HistoryEntry) => {
+    if (sortOrder === "amount") {
+      return second.value.amountCents - first.value.amountCents;
+    }
+    const difference = second.timestamp - first.timestamp;
+    return sortOrder === "newest" ? difference : -difference;
+  };
+  const filteredGrouped = entries.sort(compareEntries).reduce<Record<string, HistoryEntry[]>>((groups, entry) => {
+    (groups[entry.date] ||= []).push(entry);
     return groups;
   }, {});
   const orderedGroups = Object.entries(filteredGrouped)
-    .map(([date, dateExpenses]) => [
+    .map(([date, dateEntries]) => [
       date,
-      [...dateExpenses].sort((first, second) => {
-        if (sortOrder === "amount") return second.amountCents - first.amountCents;
-        const difference =
-          new Date(second.spentAt || 0).getTime() -
-          new Date(first.spentAt || 0).getTime();
-        return sortOrder === "newest" ? difference : -difference;
-      }),
+      dateEntries,
     ] as const)
-    .sort(([, firstExpenses], [, secondExpenses]) => {
-      if (sortOrder === "amount") return secondExpenses[0].amountCents - firstExpenses[0].amountCents;
-      const difference =
-        new Date(secondExpenses[0]?.spentAt || 0).getTime() -
-        new Date(firstExpenses[0]?.spentAt || 0).getTime();
+    .sort(([, firstEntries], [, secondEntries]) => {
+      if (sortOrder === "amount") return compareEntries(firstEntries[0], secondEntries[0]);
+      const difference = secondEntries[0].timestamp - firstEntries[0].timestamp;
       return sortOrder === "newest" ? difference : -difference;
     });
 
   return (
     <>
       <section className="history-summary">
-        <div><span>Showing</span><strong>{filteredExpenses.length} / {expenses.length}</strong></div>
-        <div><span>Total paid</span><strong>{money(total, currency)}</strong></div>
+        <div><span>Total expenses</span><strong>{money(total, currency)}</strong></div>
+        <div><span>Income received</span><strong className="green">{money(incomeTotal, currency)}</strong></div>
         <div><span>My cost</span><strong>{money(personal, currency)}</strong></div>
       </section>
       <div className="section-heading">
         <h2>Transaction history</h2>
-        <span>Current trip</span>
+        <span>{entries.length} entries · Current trip</span>
       </div>
       <div className="history-controls">
         <input
@@ -1511,15 +1859,31 @@ function HistoryView({
           <option value="amount">Highest amount</option>
         </select>
       </div>
-      {orderedGroups.length ? orderedGroups.map(([date, dateExpenses]) => (
+      {orderedGroups.length ? orderedGroups.map(([date, dateEntries]) => (
         <section className="history-group" key={date}>
           <div className="history-date">
             <h3>{date}</h3>
-            <span>{dateExpenses.length} expenses</span>
+            <span>{dateEntries.length} entries</span>
           </div>
           <div className="expense-list">
-            {dateExpenses.map((expense) => (
-              <ExpenseRow key={expense.id} expense={expense} onEdit={onEdit} onDelete={onDelete} currency={currency} />
+            {dateEntries.map((entry) => (
+              entry.kind === "expense" ? (
+                <ExpenseRow
+                  key={`expense-${entry.value.id}`}
+                  expense={entry.value}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                  currency={currency}
+                />
+              ) : (
+                <IncomeRow
+                  key={`income-${entry.value.id}`}
+                  income={entry.value}
+                  currency={currency}
+                  onEdit={onEditIncome}
+                  onDelete={onDeleteIncome}
+                />
+              )
             ))}
           </div>
         </section>
@@ -1530,6 +1894,7 @@ function HistoryView({
 
 function MoreView({
   expenses,
+  incomes,
   trips,
   activeTripId,
   setTrips,
@@ -1540,6 +1905,7 @@ function MoreView({
   onImportNotes,
 }: {
   expenses: Expense[];
+  incomes: Income[];
   trips: Trip[];
   activeTripId: string | number;
   setTrips: (trips: Trip[]) => void;
@@ -1548,14 +1914,19 @@ function MoreView({
   onProfileNameChange: (name: string) => void;
   onCurrencyChange: (currency: AppCurrency) => void;
   onImportNotes: (notes: string) =>
-    | { imported: number; skipped: number }
-    | Promise<{ imported: number; skipped: number }>;
+    | { imported: number; incomeImported: number; skipped: number }
+    | Promise<{ imported: number; incomeImported: number; skipped: number }>;
 }) {
   const [activeTool, setActiveTool] = useState<"import" | "currency" | null>(null);
   const [notes, setNotes] = useState("");
   const [nameDraft, setNameDraft] = useState(profileName);
   const [shareMessage, setShareMessage] = useState("");
   const [shareLink, setShareLink] = useState("");
+  const [isImporting, setIsImporting] = useState(false);
+  const [importFeedback, setImportFeedback] = useState<{
+    type: "progress" | "success" | "error";
+    message: string;
+  } | null>(null);
 
   async function createShareLink() {
     const trip = trips.find((item) => String(item.id) === String(activeTripId));
@@ -1588,7 +1959,7 @@ function MoreView({
 
   function exportTripData() {
     const trip = trips[0];
-    const payload = JSON.stringify({ trip, expenses }, null, 2);
+    const payload = JSON.stringify({ trip, expenses, incomes }, null, 2);
     const blob = new Blob([payload], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -1602,9 +1973,10 @@ function MoreView({
     const trip = trips.find((item) => String(item.id) === String(activeTripId)) || trips[0];
     const escapeCsv = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
     const rows = [
-      ["Trip", "Date", "Expense", "Category", "Note", "Paid", "Your cost", "Owed back"],
+      ["Trip", "Type", "Date", "Description", "Category", "Note", "Amount", "Your cost", "Owed back"],
       ...expenses.map((expense) => [
         trip?.name || "Trip",
+        "Expense",
         expense.date,
         expense.title,
         expense.category,
@@ -1612,6 +1984,17 @@ function MoreView({
         money(expense.amountCents, currency),
         money(expense.myCostCents, currency),
         money(expense.owedCents, currency),
+      ]),
+      ...incomes.map((income) => [
+        trip?.name || "Trip",
+        "Income",
+        new Date(income.receivedAt).toLocaleDateString(),
+        income.source,
+        "",
+        "",
+        money(income.amountCents, currency),
+        "",
+        "",
       ]),
     ];
     const blob = new Blob([rows.map((row) => row.map(escapeCsv).join(",")).join("\n")], { type: "text/csv;charset=utf-8" });
@@ -1625,6 +2008,42 @@ function MoreView({
 
   function printTrip() {
     window.print();
+  }
+
+  async function importNotes() {
+    if (isImporting) return;
+    if (!notes.trim()) {
+      setImportFeedback({ type: "error", message: "Paste at least one entry to import." });
+      return;
+    }
+    if (!activeTripId) {
+      setImportFeedback({ type: "error", message: "Create or select a trip before importing entries." });
+      return;
+    }
+    setIsImporting(true);
+    setImportFeedback({ type: "progress", message: "Importing entries…" });
+    try {
+      const result = await onImportNotes(notes.trim());
+      const importedCount = result.imported + result.incomeImported;
+      if (!importedCount && !result.skipped) {
+        setImportFeedback({ type: "error", message: "No entries were found to import." });
+      } else {
+        const importedSummary = `${result.imported} expense${result.imported === 1 ? "" : "s"} and ${result.incomeImported} income entr${result.incomeImported === 1 ? "y" : "ies"} imported`;
+        setImportFeedback({
+          type: result.skipped ? "error" : "success",
+          message: `${importedSummary}${result.skipped ? `; ${result.skipped} entr${result.skipped === 1 ? "y was" : "ies were"} skipped.` : "."}`,
+        });
+      }
+    } catch (error) {
+      setImportFeedback({
+        type: "error",
+        message: error instanceof Error
+          ? `Import failed: ${error.message}`
+          : "Import failed. Please try again.",
+      });
+    } finally {
+      setIsImporting(false);
+    }
   }
 
   return (
@@ -1703,32 +2122,40 @@ function MoreView({
       {activeTool === "import" && (
         <div className="more-tool-panel">
           <strong>Import notes</strong>
-          <p>Paste one expense per line, such as “train 307.32 /3”.</p>
+          <p>Paste one trip entry per line, such as “train 307.32 /3” or “income 4000 gift from Mom”.</p>
           <p className="import-format">
-            Format: <code>AMOUNT DESCRIPTION</code>. Use <code>/3</code> for
+            Expenses use <code>AMOUNT DESCRIPTION</code>. Use <code>income AMOUNT SOURCE</code> for money received. Use <code>/3</code> for
             three people, <code>-me</code> when you do not pay your share, and a
             heading like <code>7 sept 2026</code> to set the date for following
             lines. The date stays active until the next heading.
           </p>
           <textarea
             value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-            placeholder={'train 307.32 /3\ncoffee 83 -me'}
+            onChange={(event) => {
+              setNotes(event.target.value);
+              setImportFeedback(null);
+            }}
+            placeholder={'train 307.32 /3\nincome 4000 gift from Mom'}
             rows={6}
+            disabled={isImporting}
           />
           <button
             className="auth-submit"
             type="button"
-            onClick={async () => {
-              if (!notes.trim()) return;
-              const result = await onImportNotes(notes.trim());
-              setShareMessage(
-                `${result.imported} expense${result.imported === 1 ? "" : "s"} imported${result.skipped ? `, ${result.skipped} skipped` : ""}.`,
-              );
-            }}
+            onClick={() => void importNotes()}
+            disabled={isImporting}
           >
-            Import expenses
+            {isImporting ? "Importing entries…" : "Import entries"}
           </button>
+          {importFeedback && (
+            <p
+              className={`import-feedback ${importFeedback.type}`}
+              role={importFeedback.type === "error" ? "alert" : "status"}
+              aria-live={importFeedback.type === "error" ? "assertive" : "polite"}
+            >
+              {importFeedback.message}
+            </p>
+          )}
         </div>
       )}
       {activeTool === "currency" && (

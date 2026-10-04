@@ -11,6 +11,13 @@ export type SharedExpense = {
   spent_at: string;
 };
 
+export type SharedIncome = {
+  source: string;
+  amount_minor: number;
+  currency: string;
+  received_at: string;
+};
+
 export type SharedTrip = {
   name: string;
   description: string | null;
@@ -23,6 +30,7 @@ export type SharedTrip = {
 export type SharedPayload = {
   trip: SharedTrip;
   expenses: SharedExpense[];
+  incomes?: SharedIncome[];
 };
 
 function categoryFor(title: string) {
@@ -53,6 +61,8 @@ export default function SharedTripView({ payload }: { payload: SharedPayload }) 
   const [category, setCategory] = useState("All");
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest" | "amount">("newest");
   const expenses = payload.expenses;
+  const hasIncomeData = Array.isArray(payload.incomes);
+  const incomes = payload.incomes ?? [];
   const categories = ["All", ...new Set(expenses.map((expense) => categoryFor(expense.title)))];
   const filteredExpenses = useMemo(() => expenses
     .filter((expense) => !query.trim() || expense.title.toLowerCase().includes(query.trim().toLowerCase()))
@@ -68,6 +78,10 @@ export default function SharedTripView({ payload }: { payload: SharedPayload }) 
     return summary;
   }, {});
   const total = expenses.reduce((sum, expense) => sum + Number(expense.amount_minor), 0);
+  const incomeTotal = incomes.reduce(
+    (sum, income) => sum + Number(income.amount_minor),
+    0,
+  );
   const startDate = formatDate(payload.trip.start_date);
   const endDate = formatDate(payload.trip.end_date);
   const dates = [startDate, endDate].filter(Boolean).join(" – ");
@@ -100,11 +114,21 @@ export default function SharedTripView({ payload }: { payload: SharedPayload }) 
 
         <section className="share-total">
           <div className="share-total-heading">
-            <span>Total recorded</span>
-            <span className="share-total-label">Shared trip ledger</span>
+            <span>Trip totals</span>
+            <span className="share-total-label">Read-only summary</span>
           </div>
-          <strong>{money(total, payload.trip.base_currency)}</strong>
-          <small>{expenses.length} expenses</small>
+          <div className="share-total-values">
+            <div>
+              <span>Total expenses</span>
+              <strong>{money(total, payload.trip.base_currency)}</strong>
+              <small>{expenses.length} expenses</small>
+            </div>
+            <div>
+              <span>Income received</span>
+              <strong>{money(incomeTotal, payload.trip.base_currency)}</strong>
+              <small>{incomes.length} income entries</small>
+            </div>
+          </div>
         </section>
 
         <section className="share-section">
@@ -123,6 +147,31 @@ export default function SharedTripView({ payload }: { payload: SharedPayload }) 
               </div>
             ))}
           </div>
+        </section>
+
+        <section className="share-section">
+          <div className="section-heading">
+            <h2>Income received</h2>
+            <span>{incomes.length} entries</span>
+          </div>
+          {!hasIncomeData && (
+            <p className="share-income-note">
+              Income is not available on this share link yet. Ask the trip owner to run
+              supabase/share-link-migration.sql in the Supabase SQL Editor.
+            </p>
+          )}
+          <div className="share-income-list">
+            {incomes.length ? incomes.map((income, index) => (
+              <article className="share-income-row" key={`${income.received_at}-${index}`}>
+                <div>
+                  <strong>{income.source}</strong>
+                  <span>Income · {new Date(income.received_at).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}</span>
+                </div>
+                <b>+{money(Number(income.amount_minor), income.currency)}</b>
+              </article>
+            )) : <p className="empty-state">No income entries in this trip.</p>}
+          </div>
+          <p className="share-income-note">Income is shown separately and is not included in expense or category totals.</p>
         </section>
 
         <section className="share-section">

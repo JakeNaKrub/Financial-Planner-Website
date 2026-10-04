@@ -36,12 +36,13 @@ Do not use or expose a Supabase service-role key in client code.
 
 ## Data Setup
 
-Run `supabase/schema.sql` in the Supabase SQL Editor. It creates:
+For a new Supabase project, run `supabase/schema.sql` in the SQL Editor. It creates:
 
 - `trips`
 - `people`
 - `categories`
 - `expenses`
+- `incomes`
 - `expense_participants`
 - `settlements`
 - Row Level Security policies
@@ -49,30 +50,35 @@ Run `supabase/schema.sql` in the Supabase SQL Editor. It creates:
 
 Expenses reference `categories` through `category_id`. New and edited expenses upsert one of the built-in categories before saving. Supabase-loaded expenses prefer a saved category and fall back to keyword detection when no valid saved category exists.
 
+For existing Supabase projects, run `supabase/income-migration.sql` to create income storage. Run the latest `supabase/share-link-migration.sql` to update the read-only RPC with income source, amount, currency, and date without exposing account identifiers. The share-link migration also safely creates the income table and its owner-scoped row-level security policy if needed. If an existing project's schema is missing share-link support too, this migration adds the `share_token` column and index as well.
+
 ## Main Code Paths
 
-- `src/app/page.tsx`: authenticated planner UI, auth state, Supabase loading, trip management, expense parsing, creation, editing, deletion, splitting, import, and share-link actions.
-- `src/lib/demo-data.ts`: `Expense`, `Trip`, `ExpenseStatus`, and `ExpenseIcon` types. Despite the filename, demo records were removed; the app starts with empty local state and loads real Supabase data after login.
+- `src/app/page.tsx`: authenticated planner UI, auth state, Supabase loading, trip management, quick expense/income parsing, expense splitting, income and expense editing/deletion, mixed chronological history, import/export, and share-link actions.
+- `src/lib/demo-data.ts`: `Expense`, `Income`, `Trip`, `ExpenseStatus`, and `ExpenseIcon` types. Despite the filename, demo records were removed; the app starts with empty local state and loads real Supabase data after login.
 - `src/lib/expense-category.ts`: category names, category-to-icon mapping, weighted keyword rules, explicit overrides, and `detectExpenseCategory()`.
 - `src/lib/supabase/client.ts`: browser Supabase client.
 - `src/lib/supabase/server.ts`: server Supabase client used by shared-trip pages.
 - `src/app/share/[token]/page.tsx`: server-rendered read-only share route.
-- `src/app/share/[token]/SharedTripView.tsx`: shared-trip presentation.
+- `src/app/share/[token]/SharedTripView.tsx`: shared-trip presentation, including separately totaled income and expenses.
 - `src/app/globals.css`: global application styling.
 
 ## Expense Input Grammar
 
-Quick capture and import accept an amount followed by a description:
+Expense quick capture and imports accept an amount followed by a description. Income uses an explicit prefix:
 
 ```text
 307.32 train /3
 83 coke /5 -me
+income 4000 gift from Mom
 ```
 
+- Prefix received money with `income`; it is tracked separately and is not included in expense totals, splits, or settlement balances.
+- Income syntax is `income AMOUNT SOURCE`, for example `income 4000 gift from Mom`. The amount must be positive; the source is optional.
 - `/3` means the amount is split among three people.
 - `-me` excludes the current user from the split.
 - Date headings such as `6 sept 2026` set the date for following imported lines.
-- Amounts may use decimals, commas, currency symbols, or Thai/English currency words supported by `parseExpense()`.
+- Expense amounts may use decimals, commas, currency symbols, or Thai/English currency words supported by `parseExpense()`. Income amounts are positive numeric values, with optional baht symbol/word.
 
 ## Category Behavior
 
@@ -98,12 +104,14 @@ When adding category rules, update `src/lib/expense-category.ts` and consider bo
 ## UI and State Notes
 
 - The app requires authentication before rendering the planner.
-- `expenses` and `trips` initialize as empty arrays. Supabase loading replaces them after authentication.
+- `expenses`, `incomes`, and `trips` initialize as empty arrays. Supabase loading replaces them after authentication.
 - The active trip is selected from the first remote trip after loading.
 - Local profile name and display currency are stored in `localStorage`.
 - Money values are stored and calculated as minor units (`amountCents` in the UI, corresponding to `*_minor` in Supabase).
 - The current UI supports THB, USD, EUR, GBP, JPY, and KRW display symbols, but expense editing currently labels the amount input as THB.
 - Shared links use the Supabase `get_shared_trip` RPC and must not expose owner IDs or share tokens in the returned trip payload.
+- Shared links show expenses and income separately. Income payloads include only source, amount, currency, and received date; they do not expose income row IDs or the user who recorded the entry.
+- On existing databases, refresh the `get_shared_trip` RPC by running `supabase/share-link-migration.sql`; otherwise the shared page will not receive income data.
 
 ## Validation Expectations
 
